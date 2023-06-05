@@ -9,59 +9,49 @@ import cv2
 import numpy as np
 import base64
 import io
+import torch
 
 
 app = Flask(__name__)
 
-# This is necessary because QUploader uses an AJAX request
-# to send the file
 cors = CORS()
 cors.init_app(app, resource={r"/api/*": {"origins": "*"}})
 
 model = YOLO("best.pt")
-
-# @app.route('/predict', methods=['POST'])
-# def predict():
-#     preds_list = []
-#     for fname in request.files:
-#         f = request.files.get(fname)
-#         img = Image.open(f.stream)  # Open image file
-#         preds = model(img)  # Run model prediction
-#         preds_plotted = preds[0].plot()
-
-#         if preds:  # Check if preds is not None or empty
-#             for pred in preds:
-#                 if hasattr(pred, 'to_dict'):
-#                     preds_list.append(pred.to_dict())
-#                 else:
-#                     preds_list.append(str(pred))
-
-#     return jsonify(predictions=preds_list)  # Return JSON response
 
 @app.route('/predict', methods=['POST'])
 def predict():
     preds_list = []
     for fname in request.files:
         f = request.files.get(fname)
-        img = Image.open(f.stream)  # Open image file
-        preds = model(img)  # Run model prediction
-        preds_plotted = preds[0].plot()
+        img = Image.open(f.stream)
+        prediction = model.predict(img, conf=0.5)
+        preds_plotted = prediction[0].plot()
 
-        # Convert the numpy array image to PIL Image, then save to BytesIO
         pil_image = Image.fromarray(preds_plotted)
         img_byte_arr = io.BytesIO()
         pil_image.save(img_byte_arr, format='JPEG')
         img_byte_arr = img_byte_arr.getvalue()
 
-        # Convert the byte string into a base64 string
         img_base64 = base64.b64encode(img_byte_arr).decode('ascii')
 
-        if preds:  # Check if preds is not None or empty
-            for pred in preds:
-                if hasattr(pred, 'to_dict'):
-                    preds_list.append(pred.to_dict())
-                else:
-                    preds_list.append(str(pred))
+        if prediction:
+            for pred in prediction:
+                for pre in pred:
+                  print("PRE: ",pre.boxes)
+                  box = pre.boxes
+                  class_number = box.cls[0].item()
+                  class_name = pre.names[class_number]
+                  single_object = {
+                      "x": box.xywh[0][0].item(),
+                      "y":box.xywh[0][1].item(),
+                      "width": box.xywh[0][2].item(),
+                      "height": box.xywh[0][3].item(),
+                      "confidence": box.conf[0].item(),
+                      "class": class_name
+                  }
+                  print("Single Object: ",single_object)
+                  preds_list.append(single_object)
 
     return jsonify(predictions=preds_list, image=img_base64)
 
